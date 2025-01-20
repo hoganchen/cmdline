@@ -46,16 +46,21 @@ int main(int argc, char *argv[])
     cerr<<a.usage();
     return 0;
   }
-  
+
   if (!ok){
     cerr<<a.error()<<endl<<a.usage();
     return 0;
   }
 
   cout<<a.get<string>("host")<<":"<<a.get<int>("port")<<endl;
+  std::vector<int> ports = a.getall<int>("port");
+  for (auto v : ports)
+  {
+    cout << v << endl;
+  }
 
-  for (size_t i=0; i<a.rest().size(); i++)
-    cout<<"- "<<a.rest()[i]<<endl;
+  // for (size_t i=0; i<a.rest().size(); i++)
+  //   cout<<"- "<<a.rest()[i]<<endl;
 
   return 0;
 }

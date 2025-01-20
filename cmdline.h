@@ -36,8 +36,11 @@
 #include <typeinfo>
 #include <cstring>
 #include <algorithm>
-#include <cxxabi.h>
 #include <cstdlib>
+
+#ifndef _MSC_VER
+#include <cxxabi.h>
+#endif
 
 namespace cmdline{
 
@@ -51,7 +54,7 @@ public:
     std::stringstream ss;
     if (!(ss<<arg && ss>>ret && ss.eof()))
       throw std::bad_cast();
-    
+
     return ret;
   }
 };
@@ -61,7 +64,7 @@ class lexical_cast_t<Target, Source, true>{
 public:
   static Target cast(const Source &arg){
     return arg;
-  }  
+  }
 };
 
 template <typename Source>
@@ -102,13 +105,22 @@ Target lexical_cast(const Source &arg)
   return lexical_cast_t<Target, Source, detail::is_same<Target, Source>::value>::cast(arg);
 }
 
+/*
+windows下，cxxabi.h头文件报错问题
+https://blog.csdn.net/10km/article/details/50982993
+https://blog.csdn.net/chyuanrufeng/article/details/108847886
+*/
 static inline std::string demangle(const std::string &name)
 {
+#ifdef _MSC_VER
+  return name;
+#else
   int status=0;
   char *p=abi::__cxa_demangle(name.c_str(), 0, 0, &status);
   std::string ret(p);
   free(p);
   return ret;
+#endif
 }
 
 template <class T>
@@ -367,6 +379,14 @@ public:
     return p->get();
   }
 
+  template <class T>
+  const std::vector<T> &getall(const std::string &name) const {
+    if (options.count(name)==0) throw cmdline_error("there is no flag: --"+name);
+    const option_with_value<T> *p=dynamic_cast<const option_with_value<T>*>(options.find(name)->second);
+    if (p==NULL) throw cmdline_error("type mismatch flag '"+name+"'");
+    return p->getall();
+  }
+
   const std::vector<std::string> &rest() const {
     return others;
   }
@@ -426,6 +446,9 @@ public:
   bool parse(int argc, const char * const argv[]){
     errors.clear();
     others.clear();
+    bool long_flag = false, short_flag = false;
+    std::string name;
+    char last;
 
     if (argc<1){
       errors.push_back("argument number must be longer than 0");
@@ -453,12 +476,12 @@ public:
       if (strncmp(argv[i], "--", 2)==0){
         const char *p=strchr(argv[i]+2, '=');
         if (p){
-          std::string name(argv[i]+2, p);
+          name = std::string(argv[i]+2, p);
           std::string val(p+1);
           set_option(name, val);
         }
         else{
-          std::string name(argv[i]+2);
+          name = std::string(argv[i]+2);
           if (options.count(name)==0){
             errors.push_back("undefined option: --"+name);
             continue;
@@ -477,10 +500,12 @@ public:
             set_option(name);
           }
         }
+        long_flag = true;
+        short_flag = false;
       }
       else if (strncmp(argv[i], "-", 1)==0){
         if (!argv[i][1]) continue;
-        char last=argv[i][1];
+        last=argv[i][1];
         for (int j=2; argv[i][j]; j++){
           last=argv[i][j];
           if (lookup.count(argv[i][j-1])==0){
@@ -510,9 +535,20 @@ public:
         else{
           set_option(lookup[last]);
         }
+        long_flag = false;
+        short_flag = true;
       }
       else{
         others.push_back(argv[i]);
+        if (long_flag)
+        {
+          set_option(name, argv[i]);
+        }
+
+        if (short_flag)
+        {
+          set_option(lookup[last], argv[i+1]);
+        }
       }
     }
 
@@ -560,7 +596,7 @@ public:
       if (ordered[i]->must())
         oss<<ordered[i]->short_description()<<" ";
     }
-    
+
     oss<<"[options] ... "<<ftr<<std::endl;
     oss<<"options:"<<std::endl;
 
@@ -710,6 +746,10 @@ private:
       return actual;
     }
 
+    const std::vector<T> &getall() const {
+      return vactual;
+    }
+
     bool has_value() const { return true; }
 
     bool set(){
@@ -719,6 +759,7 @@ private:
     bool set(const std::string &value){
       try{
         actual=read(value);
+        vactual.push_back(actual);
         has=true;
       }
       catch(const std::exception &e){
@@ -774,6 +815,7 @@ private:
     bool has;
     T def;
     T actual;
+    std::vector<T> vactual;
   };
 
   template <class T, class F>
