@@ -547,7 +547,7 @@ public:
 
         if (short_flag)
         {
-          set_option(lookup[last], argv[i+1]);
+          set_option(lookup[last], argv[i]);
         }
       }
     }
